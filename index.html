@@ -1,0 +1,374 @@
+<html>
+	<head>
+		<title>zkLevedit</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+		<script src="jquery.js"></script>
+		<script src="phaser.js"></script>
+		<style>
+			body{
+				user-select: none;
+				margin: 0;
+				font-family: arial;
+			}
+			h1, h2, h3, h4, h5, p{
+				margin: 0;
+				margin-top: 5px;
+				margin-bottom: 10px;
+			}
+			#menubtn{
+				position: fixed;
+				right: 0;
+				top: 0;
+
+				background-color: black;
+				padding: 15px;
+				color: lime;
+			}
+			#options{
+				position: fixed;
+				border: 1px solid black;
+				background-color: white;
+				top: 75px;
+				left: 50px;
+				right: 50px;
+				bottom: 75px;
+				padding: 20px;
+				border-radius: 5px;	
+				overflow: auto;
+			}
+			input, button{
+				box-sizing: border-box;
+				width: 100%;
+				padding: 10px;
+				margin-bottom: 5px;
+			}
+			#tiledata{
+				max-height: 300px; 
+				overflow: auto; 
+				user-select: text; 
+				font-family: courier;
+				background-color: black;
+				color: lime;
+				padding: 10px;
+				border-radius: 5px;
+			}
+			#tilemodif{
+				display: none;
+				position: fixed;
+				left: 100px;
+				right: 100px;
+				bottom: 100px;
+				background-color: rgba(255, 255, 255, .8);
+				padding: 10px;
+				border-radius: 5px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="options">
+			<div id="firstonly">
+				<h3>World Width and Height</h3>
+				<label>Width</label>
+				<input type="number" id="gw">
+				<label>Height</label>
+				<input type="number" id="gh">
+				<label>Grid Size</label>
+				<input type="number" id="tsz">
+				<button onclick="createWorld();">Create a World</button>
+			</div>
+			<h3>Tile list</h3>
+			<div id="tilelist"></div>
+			<h3>Generated Tile Data</h3>
+			<p>Select all and press Ctrl + C to copy.</p>
+			<div id="tiledata">Tile Data goes here.</div>
+			<h3>Load Tile Data to Edit</h3>
+			<input placeholder="Paste TD here." id="tdtoimport"></input>
+			<button onclick="loadTileData();">Load</button>
+		</div>
+		<div id="tilemodif">
+			<h3 onclick="$('#tilemodif').hide();">Edit selected tile [x]</h3>
+			<button onclick="rotateLeft();">Rotate Left</button>
+			<button onclick="rotateRight();">Rotate Right</button>
+			<button onclick="flip();">Flip</button>
+			<button onclick="deleteTile();">Delete</button>
+			<input id="currentparam" placeholder="Param" onkeyup="setParamData()">
+		</div>
+		<div id="menubtn" onclick="toggleOpt()">[OPTS]</div>
+		<script>
+			document.addEventListener('contextmenu', event => event.preventDefault());
+			var maxTiles = 27;
+			var game, mainwp, tileSprites;
+			var gw = "";
+			var gh = "";
+			var tsz = "";
+			var lastXY = { x : 0, y : 0 }
+			var cukline;
+			var firstClick = false;
+			var selectedTile = 0;
+			var selectedTileImage = 1;
+			var tileId = 0;
+			var lastAngle = 0;
+			var lastFlipx = 1;
+			
+			function createWorld(){
+				$("#firstonly").hide();
+				gw = $("#gw").val();
+				gh = $("#gh").val();
+				tsz = $("#tsz").val();
+				if(gw != "" && gh != "" && tsz != ""){
+					gw = parseInt(gw);
+					gh = parseInt(gh);
+					game = new Phaser.Game(gw, gh, Phaser.AUTO);
+					mainwp = {
+						preload : function(){
+							for(var i = 0; i < maxTiles; i++){
+								var tnum = i+1;
+								game.load.image("tile" + tnum, "tiles/tile" + tnum + ".png");
+							}
+						},
+						create : function(){
+							game.stage.backgroundColor = "#011052";
+							var graphics = game.add.graphics(0, 0);
+							graphics.lineStyle(1, 0x2f8200, 1);
+							
+							//vertical lines
+							for(var i = 0; i < gw/tsz; i++){
+								graphics.moveTo(i * tsz, 0);
+								graphics.lineTo(i * tsz, gh);
+							}
+							//horizontal lines
+							for(var i = 0; i < gh/tsz; i++){
+								graphics.moveTo(0, i * tsz);
+								graphics.lineTo(gw, i * tsz);
+							}
+							
+							tileSprites = game.add.group();
+							
+							game.inputEnabled = true;
+							game.input.onDown.add(function(){
+								lastXY.x = game.input.x - (game.input.x % tsz);
+								lastXY.y = game.input.y - (game.input.y % tsz);
+								if(!firstClick){
+									firstClick = true;
+									setTimeout(function(){
+										firstClick = false;
+									}, 250);
+								}else{
+									placeTile(selectedTileImage);
+									firstClick = false;
+								}
+							}, self);
+							
+							game.input.mouse.capture = true;
+							
+						},
+						update : function(){
+							
+						}
+					}
+				}
+				game.state.add("mainwp", mainwp);
+				game.state.start("mainwp");
+			}
+			
+			var workplace
+			
+			function toggleOpt(){
+				generateTileData();
+				$("#options").toggle();
+				$("#tilemodif").hide();
+			}
+			
+			function loadTiles(){
+				var tl = "";
+				for(var i = 0; i < maxTiles; i++){
+					var tnum = i+1;
+					tl += "<div style='margin: 10px; border: 1px solid lime; padding: 5px; border-radius: 5px; display: inline-block;' onclick='selectTile(" + tnum + ")'><img src='tiles/tile" +tnum+ ".png'></div>"
+				}
+				$("#tilelist").html(tl);
+			}
+			loadTiles();
+
+			function placeTile(n){
+				if(game != undefined){
+					$("#firstonly").hide();
+					var newTile = tileSprites.create(lastXY.x + (tsz/2), lastXY.y + (tsz/2), "tile" + n);
+					newTile.inputEnabled = true;
+					newTile.input.enableDrag();
+					newTile.events.onDragStop.add(onTileDrop, newTile);
+					newTile.events.onInputDown.add(showTmod, newTile);
+					newTile.alpha = .75;
+					newTile.tileId = tileId;
+					newTile.tileImageId = n;
+					newTile.anchor.setTo(.5);
+					newTile.scale.setTo(lastFlipx, 1);
+					newTile.angle = lastAngle;
+					tileId ++;
+					newTile.tileData = {
+						x : newTile.x,
+						y : newTile.y,
+						flipx : lastFlipx,
+						spritename : "tile" + n,
+						rotation : lastAngle,
+						param : ""
+					};
+				}
+			}
+			
+			function onTileDrop(t){
+				lastXY.x = (t.x - (t.x % tsz));
+				lastXY.y = (t.y - (t.y % tsz));
+				t.x = lastXY.x;
+				t.y = lastXY.y;
+				t.tileData.x = lastXY.x;
+				t.tileData.y = lastXY.y;
+			}
+			
+			function showTmod(t, pointer){
+				if(pointer.rightButton.isDown){
+					$("#tilemodif").hide().fadeIn();
+					selectedTile = t.tileId;
+					$("#currentparam").val(t.tileData.param);
+				}
+				selectedTileImage = t.tileImageId;
+				lastAngle = t.angle;
+				lastFlipx = t.scale.x;
+			}
+			
+			function generateTileData(){
+				if(game != undefined){
+					var tileData = [];
+					var levelData = { width : gw, height : gh, tilesize: tsz, tiles : tileData };
+					for(var i = 0; i < tileSprites.children.length; i++){
+						if(tileSprites.children[i].alive)
+							tileData.push(tileSprites.children[i].tileData);
+					}
+					$("#tiledata").html(JSON.stringify(levelData));
+					console.log("Tile Data successfully generated.");
+				}
+			}
+			
+			function selectTile(n){
+				selectedTileImage = n;
+				toggleOpt();
+			}
+			
+			function rotateLeft(){
+				tileSprites.children[selectedTile].tileData.rotation -= 10;
+				tileSprites.children[selectedTile].angle = tileSprites.children[selectedTile].tileData.rotation;
+			}
+			
+			function rotateRight(){
+				tileSprites.children[selectedTile].tileData.rotation += 10;
+				tileSprites.children[selectedTile].angle = tileSprites.children[selectedTile].tileData.rotation;
+			}
+			
+			function deleteTile(){
+				tileSprites.children[selectedTile].kill();
+				$("#tilemodif").hide();
+			}
+			
+			function flip(){
+				if(tileSprites.children[selectedTile].scale.x > 0){
+					tileSprites.children[selectedTile].tileData.flipx = -1;
+					tileSprites.children[selectedTile].scale.setTo(-1, 1);
+				}
+				else{
+					tileSprites.children[selectedTile].scale.setTo(1, 1);
+					tileSprites.children[selectedTile].tileData.flipx = 1;
+				}
+			}
+			
+			function setParamData(){
+				tileSprites.children[selectedTile].tileData.param = $("#currentparam").val();
+			}
+			
+			function loadTileData(){
+				var rawtdstring = $("#tdtoimport").val();
+				if(rawtdstring != ""){
+					$("#firstonly").hide();
+					var loadedTileData = JSON.parse(rawtdstring);
+					gw = loadedTileData.width;
+					gh = loadedTileData.height;
+					tsz = loadedTileData.tilesize;
+					game = new Phaser.Game(gw, gh, Phaser.AUTO);
+					mainwp = {
+						preload : function(){
+							for(var i = 0; i < maxTiles; i++){
+								var tnum = i+1;
+								game.load.image("tile" + tnum, "tiles/tile" + tnum + ".png");
+							}
+						},
+						create : function(){
+							game.stage.backgroundColor = "#011052";
+							var graphics = game.add.graphics(0, 0);
+							graphics.lineStyle(1, 0x2f8200, 1);
+							
+							//vertical lines
+							for(var i = 0; i < gw/tsz; i++){
+								graphics.moveTo(i * tsz, 0);
+								graphics.lineTo(i * tsz, gh);
+							}
+							//horizontal lines
+							for(var i = 0; i < gh/tsz; i++){
+								graphics.moveTo(0, i * tsz);
+								graphics.lineTo(gw, i * tsz);
+							}
+							
+							tileSprites = game.add.group();
+							
+							game.inputEnabled = true;
+							game.input.onDown.add(function(){
+								lastXY.x = game.input.x - (game.input.x % tsz);
+								lastXY.y = game.input.y - (game.input.y % tsz);
+								if(!firstClick){
+									firstClick = true;
+									setTimeout(function(){
+										firstClick = false;
+									}, 250);
+								}else{
+									placeTile(selectedTileImage);
+									firstClick = false;
+								}
+							}, self);
+							
+							game.input.mouse.capture = true;
+							
+							//loading tiles
+							var ltdtiles = loadedTileData.tiles;
+							for(var i = 0; i < ltdtiles.length; i++){
+								var newTile = tileSprites.create(ltdtiles[i].x, ltdtiles[i].y, ltdtiles[i].spritename);
+								newTile.inputEnabled = true;
+								newTile.input.enableDrag();
+								newTile.events.onDragStop.add(onTileDrop, newTile);
+								newTile.events.onInputDown.add(showTmod, newTile);
+								newTile.alpha = .75;
+								newTile.tileId = tileId;
+								newTile.tileImageId = parseInt(ltdtiles[i].spritename.replace("tile", ""));
+								newTile.anchor.setTo(.5);
+								newTile.scale.setTo(ltdtiles[i].flipx, 1);
+								newTile.angle = ltdtiles[i].rotation;
+								tileId ++;
+								newTile.tileData = {
+									x : ltdtiles[i].x,
+									y : ltdtiles[i].y,
+									flipx : ltdtiles[i].flipx,
+									spritename : ltdtiles[i].spritename,
+									rotation : ltdtiles[i].rotation,
+									param : ltdtiles[i].param
+								};
+							}
+							
+						},
+						update : function(){
+							
+						}
+					}
+					game.state.add("mainwp", mainwp);
+					game.state.start("mainwp");
+				}
+			}
+		</script>
+	</body>
+</html>
